@@ -64,11 +64,33 @@ export function isFaceVisible(
 	const boxWidth = maxX - minX;
 	const boxHeight = maxY - minY;
 
-	const minWidth = videoWidth * 0.25;
-	const minHeight = videoHeight * 0.25;
+	const minWidth = videoWidth * 0.15;
+	const minHeight = videoHeight * 0.15;
 
+	const margin = 0.05;
 	const isInsideScreen =
-		minX >= 0 && maxX <= videoWidth && minY >= 0 && maxY <= videoHeight;
+		minX >= -videoWidth * margin &&
+		maxX <= videoWidth * (1 + margin) &&
+		minY >= -videoHeight * margin &&
+		maxY <= videoHeight * (1 + margin);
 
 	return isInsideScreen && boxWidth >= minWidth && boxHeight >= minHeight;
+}
+
+export function calculateFaceSpanNormalized(
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any
+	landmarks: any[],
+	videoHeight: number
+): number {
+	const chin = landmarks[152];
+	const leftEye = landmarks[33];
+	const rightEye = landmarks[263];
+
+	const midEye = {
+		x: (leftEye.x + rightEye.x) / 2,
+		y: (leftEye.y + rightEye.y) / 2,
+	};
+
+	const dy = Math.abs(chin.y - midEye.y);
+	return dy * videoHeight;
 }

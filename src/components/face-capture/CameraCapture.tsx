@@ -6,12 +6,14 @@ import { Camera } from '@mediapipe/camera_utils';
 import '@tensorflow/tfjs-backend-webgl';
 
 import LightingBar from './overlays/LightingBar';
+import FaceFrameOverlay from './overlays/FaceFrameOverlay';
+
 import {
 	calculateBrightness,
+	calculateFaceSpanNormalized,
 	isFaceInsideFrame,
 	isFaceVisible,
 } from './utils/faceUtils';
-import FaceFrameOverlay from './overlays/FaceFrameOverlay';
 
 interface Props {
 	handleImageUpload: (image: string) => void;
@@ -23,6 +25,9 @@ export default function CameraCapture({ handleImageUpload }: Props) {
 	const [hasFace, setHasFace] = useState(false);
 	const [isFaceInFrameCentered, setIsFaceInFrameCentered] = useState(false);
 	const [lightingLevel, setLightingLevel] = useState(0);
+	const [zoomStatus, setZoomStatus] = useState<
+		'too-close' | 'too-far' | 'perfect'
+	>('too-far');
 
 	useEffect(() => {
 		const faceMesh = new FaceMesh({
@@ -41,44 +46,48 @@ export default function CameraCapture({ handleImageUpload }: Props) {
 			const canvasWidth = videoRef.current?.videoWidth || 640;
 			const canvasHeight = videoRef.current?.videoHeight || 480;
 
-			if (
-				results.multiFaceLandmarks &&
-				results.multiFaceLandmarks.length > 0
-			) {
-				const landmarks = results.multiFaceLandmarks[0];
+			const isDetected = results.multiFaceLandmarks?.length > 0;
+			setHasFace(isDetected);
 
-				const visible = isFaceVisible(
-					landmarks,
-					canvasWidth,
-					canvasHeight
-				);
-				setHasFace(visible);
-
-				if (visible) {
-					const frame = {
-						x: canvasWidth * 0.15,
-						y: canvasHeight * 0.15,
-						width: canvasWidth * 0.7,
-						height: canvasHeight * 0.7,
-					};
-
-					const centered = isFaceInsideFrame(
-						landmarks,
-						canvasWidth,
-						canvasHeight,
-						frame
-					);
-					setIsFaceInFrameCentered(centered);
-
-					const brightness = calculateBrightness(results.image);
-					setLightingLevel(brightness);
-				} else {
-					setIsFaceInFrameCentered(false);
-				}
-			} else {
-				setHasFace(false);
+			if (!isDetected) {
 				setIsFaceInFrameCentered(false);
+				return;
 			}
+
+			const landmarks = results.multiFaceLandmarks[0];
+
+			const spanPx = calculateFaceSpanNormalized(landmarks, canvasHeight);
+			if (spanPx < 120) {
+				setZoomStatus('too-far');
+			} else if (spanPx > 170) {
+				setZoomStatus('too-close');
+			} else {
+				setZoomStatus('perfect');
+			}
+
+			const visible = isFaceVisible(landmarks, canvasWidth, canvasHeight);
+
+			if (!visible) {
+				setIsFaceInFrameCentered(false);
+				return;
+			}
+
+			const frame = {
+				x: canvasWidth * 0.12,
+				y: canvasHeight * 0.12,
+				width: canvasWidth * 0.7,
+				height: canvasHeight * 0.7,
+			};
+			const centered = isFaceInsideFrame(
+				landmarks,
+				canvasWidth,
+				canvasHeight,
+				frame
+			);
+			setIsFaceInFrameCentered(centered);
+
+			const brightness = calculateBrightness(results.image);
+			setLightingLevel(brightness);
 		});
 
 		if (
@@ -109,6 +118,7 @@ export default function CameraCapture({ handleImageUpload }: Props) {
 			<FaceFrameOverlay
 				hasFace={hasFace}
 				isCentered={isFaceInFrameCentered}
+				zoomStatus={zoomStatus}
 			/>
 			<LightingBar brightness={lightingLevel} />
 		</div>
