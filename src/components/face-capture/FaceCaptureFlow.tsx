@@ -1,49 +1,58 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import CameraPromptFlow from './flows/CameraPromptFlow';
 
-export type FlowType = 'camera-blocked' | 'camera-granted' | 'camera-prompt';
+type PermissionState = 'loading' | 'granted' | 'prompt' | 'denied';
 
-export default function FaceCaptureFlow() {
-	const [flow, setFlow] = useState<FlowType | null>(null);
-	const [showPermissionIntro, setShowPermissionIntro] = useState(false);
+export default function FaceCaptureFlow({
+	handleImageUpload,
+}: {
+	handleImageUpload: (dataUrl: string) => void;
+}) {
+	const [permissionState, setPermissionState] =
+		useState<PermissionState>('loading');
+	const [startCamera, setStartCamera] = useState(false);
 
 	useEffect(() => {
-		async function detectPermission() {
+		async function checkPermission() {
 			try {
 				const result = await navigator.permissions.query({
 					name: 'camera' as PermissionName,
 				});
-				if (result.state === 'granted') setFlow('camera-granted');
-				else if (result.state === 'prompt') {
-					setFlow('camera-prompt');
-					setShowPermissionIntro(true);
-				} else setFlow('camera-blocked');
+				setPermissionState(result.state as PermissionState);
 			} catch (err) {
 				try {
 					await navigator.mediaDevices.getUserMedia({ video: true });
-					setFlow('camera-granted');
-				} catch (err) {
-					setFlow('camera-blocked');
+					setPermissionState('granted');
+				} catch {
+					setPermissionState('denied');
 				}
 			}
 		}
 
-		detectPermission();
+		checkPermission();
 	}, []);
 
-	if (!flow) return <div className='text-center p-4'>Loading...</div>;
-
-	if (flow === 'camera-prompt' && showPermissionIntro) {
-		return <>PermissionIntro</>;
+	if (permissionState === 'loading') {
+		return <div className='text-center pt-32 text-gray-500'>Načítání…</div>;
 	}
 
-	switch (flow) {
-		case 'camera-granted':
-			return <>DefaultAccessFlow</>;
-		case 'camera-prompt':
-			return <>CameraFlow</>;
-		case 'camera-blocked':
-			return <>UploadFallbackFlow</>;
+	if (permissionState === 'denied') {
+		return <>ManualUploadFlow</>;
 	}
+
+	if (permissionState === 'prompt' && !startCamera) {
+		return (
+			<CameraPromptFlow
+				onPermissionGranted={() => {
+					setPermissionState('granted');
+					setStartCamera(true);
+				}}
+				onPermissionDenied={() => setPermissionState('denied')}
+			/>
+		);
+	}
+
+	return <>CameraCapture</>;
 }
