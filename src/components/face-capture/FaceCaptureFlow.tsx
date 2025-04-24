@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import CameraPromptFlow from './flows/CameraPromptFlow';
+import CameraCapture from './CameraCapture';
 
 type PermissionState = 'loading' | 'granted' | 'prompt' | 'denied';
 
@@ -54,5 +55,5 @@ export default function FaceCaptureFlow({
 		);
 	}
 
-	return <>CameraCapture</>;
+	return <CameraCapture />;
 }
