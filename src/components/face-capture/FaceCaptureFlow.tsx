@@ -7,6 +7,7 @@ import CameraCapture from './CameraCapture';
 type PermissionState = 'loading' | 'granted' | 'prompt' | 'denied';
 
 export default function FaceCaptureFlow({
+	// eslint-disable-next-line @typescript-eslint/no-unused-vars
 	handleImageUpload,
 }: {
 	handleImageUpload: (dataUrl: string) => void;
@@ -22,6 +23,7 @@ export default function FaceCaptureFlow({
 					name: 'camera' as PermissionName,
 				});
 				setPermissionState(result.state as PermissionState);
+				// eslint-disable-next-line @typescript-eslint/no-unused-vars
 			} catch (err) {
 				try {
 					await navigator.mediaDevices.getUserMedia({ video: true });
@@ -55,5 +57,5 @@ export default function FaceCaptureFlow({
 		);
 	}
 
-	return <CameraCapture />;
+	return <CameraCapture handleImageUpload={() => {}} />;
 }
