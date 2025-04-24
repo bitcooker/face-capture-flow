@@ -57,5 +57,5 @@ export default function FaceCaptureFlow({
 		);
 	}
 
-	return <CameraCapture handleImageUpload={() => {}} />;
+	return <CameraCapture />;
 }

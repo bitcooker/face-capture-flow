@@ -20,7 +20,7 @@ export function calculateBrightness(
 	}
 
 	const avg = total / (data.length / 4);
-	return Math.min(avg / 255, 1);
+	return Math.min(avg / 255, 1); // normalized to [0, 1]
 }
 
 export function isFaceInsideFrame(
@@ -43,7 +43,7 @@ export function isFaceInsideFrame(
 	const dy = centerY - frameCenterY;
 	const distance = Math.sqrt(dx * dx + dy * dy);
 
-	const tolerance = frame.width * 0.2;
+	const tolerance = frame.width * 0.15; // stricter centering
 	return distance < tolerance;
 }
 

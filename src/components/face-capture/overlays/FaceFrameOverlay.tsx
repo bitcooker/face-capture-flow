@@ -1,17 +1,22 @@
 'use client';
 
 import { useEffect, useRef } from 'react';
+import NoseAlignmentOverlay from './NoseAlignmentOverlay';
 
 interface Props {
 	hasFace: boolean;
 	isCentered: boolean;
 	zoomStatus: 'too-close' | 'too-far' | 'perfect';
+	dotPosition: { x: number; y: number } | null;
+	isPerfectAlignment: boolean;
 }
 
 export default function FaceFrameOverlay({
 	hasFace,
 	isCentered,
 	zoomStatus,
+	dotPosition,
+	isPerfectAlignment,
 }: Props) {
 	const canvasRef = useRef<HTMLCanvasElement | null>(null);
 	const rectAlpha = useRef(0);
@@ -19,8 +24,6 @@ export default function FaceFrameOverlay({
 	const animationFrame = useRef<number | null>(null);
 	const fadeTimeout = useRef<NodeJS.Timeout | null>(null);
 	const targetState = useRef<'none' | 'rectangle' | 'oval'>('none');
-
-	console.log(zoomStatus);
 
 	useEffect(() => {
 		const canvas = canvasRef.current;
@@ -67,7 +70,8 @@ export default function FaceFrameOverlay({
 				);
 				ctx.fill();
 
-				ctx.strokeStyle = 'white';
+				ctx.globalCompositeOperation = 'source-over';
+				ctx.strokeStyle = isPerfectAlignment ? '#00FF00' : 'white';
 				ctx.lineWidth = 4;
 				ctx.beginPath();
 				ctx.ellipse(
@@ -111,7 +115,7 @@ export default function FaceFrameOverlay({
 		draw();
 
 		return () => cancelAnimationFrame(animationFrame.current!);
-	}, []);
+	}, [isPerfectAlignment]);
 
 	useEffect(() => {
 		if (!hasFace) {
@@ -154,6 +158,12 @@ export default function FaceFrameOverlay({
 				ref={canvasRef}
 				className='absolute inset-0 z-10 pointer-events-none'
 			/>
+			{hasFace && isCentered && zoomStatus === 'perfect' && (
+				<NoseAlignmentOverlay
+					dotPosition={dotPosition}
+					isPerfectAlignment={isPerfectAlignment}
+				/>
+			)}
 			{hasFace && (
 				<div className='absolute bottom-24 w-full text-center px-4 z-20'>
 					<p className='text-white text-lg font-semibold'>

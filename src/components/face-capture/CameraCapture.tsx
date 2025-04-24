@@ -15,19 +15,21 @@ import {
 	isFaceVisible,
 } from './utils/faceUtils';
 
-interface Props {
-	handleImageUpload: (image: string) => void;
-}
-
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-export default function CameraCapture({ handleImageUpload }: Props) {
+export default function CameraCapture() {
 	const videoRef = useRef<HTMLVideoElement | null>(null);
+
 	const [hasFace, setHasFace] = useState(false);
 	const [isFaceInFrameCentered, setIsFaceInFrameCentered] = useState(false);
 	const [lightingLevel, setLightingLevel] = useState(0);
 	const [zoomStatus, setZoomStatus] = useState<
 		'too-close' | 'too-far' | 'perfect'
 	>('too-far');
+
+	const [dotPosition, setDotPosition] = useState<{
+		x: number;
+		y: number;
+	} | null>(null);
+	const [isPerfectAlignment, setIsPerfectAlignment] = useState(false);
 
 	useEffect(() => {
 		const faceMesh = new FaceMesh({
@@ -43,19 +45,25 @@ export default function CameraCapture({ handleImageUpload }: Props) {
 		});
 
 		faceMesh.onResults((results) => {
-			const canvasWidth = videoRef.current?.videoWidth || 640;
-			const canvasHeight = videoRef.current?.videoHeight || 480;
+			const videoEl = videoRef.current;
+			if (!videoEl) return;
+
+			const canvasWidth = videoEl.videoWidth || 640;
+			const canvasHeight = videoEl.videoHeight || 480;
 
 			const isDetected = results.multiFaceLandmarks?.length > 0;
 			setHasFace(isDetected);
 
 			if (!isDetected) {
 				setIsFaceInFrameCentered(false);
+				setDotPosition(null);
+				setIsPerfectAlignment(false);
 				return;
 			}
 
 			const landmarks = results.multiFaceLandmarks[0];
 
+			// Zoom check
 			const spanPx = calculateFaceSpanNormalized(landmarks, canvasHeight);
 			if (spanPx < 120) {
 				setZoomStatus('too-far');
@@ -65,13 +73,16 @@ export default function CameraCapture({ handleImageUpload }: Props) {
 				setZoomStatus('perfect');
 			}
 
+			// Face visibility
 			const visible = isFaceVisible(landmarks, canvasWidth, canvasHeight);
-
 			if (!visible) {
 				setIsFaceInFrameCentered(false);
+				setDotPosition(null);
+				setIsPerfectAlignment(false);
 				return;
 			}
 
+			// Centering check
 			const frame = {
 				x: canvasWidth * 0.12,
 				y: canvasHeight * 0.12,
@@ -86,15 +97,38 @@ export default function CameraCapture({ handleImageUpload }: Props) {
 			);
 			setIsFaceInFrameCentered(centered);
 
+			// Brightness
 			const brightness = calculateBrightness(results.image);
 			setLightingLevel(brightness);
+
+			// Nose alignment
+			if (visible && centered && zoomStatus === 'perfect') {
+				const nose = landmarks[1];
+
+				// Screen-space dot for overlay
+				const bounds = videoEl.getBoundingClientRect();
+				const dotX = nose.x * bounds.width;
+				const dotY = nose.y * bounds.height;
+				setDotPosition({ x: dotX, y: dotY });
+
+				// Native-res alignment for accuracy
+				const targetX = canvasWidth / 2;
+				const targetY = canvasHeight / 2;
+				const actualX = nose.x * canvasWidth;
+				const actualY = nose.y * canvasHeight;
+
+				const radius = canvasWidth * 0.035; // tighter radius
+				const dx = actualX - targetX;
+				const dy = actualY - targetY;
+				const distance = Math.sqrt(dx * dx + dy * dy);
+				setIsPerfectAlignment(distance < radius);
+			} else {
+				setDotPosition(null);
+				setIsPerfectAlignment(false);
+			}
 		});
 
-		if (
-			typeof window !== 'undefined' &&
-			videoRef.current &&
-			videoRef.current instanceof HTMLVideoElement
-		) {
+		if (typeof window !== 'undefined' && videoRef.current) {
 			const camera = new Camera(videoRef.current, {
 				onFrame: async () => {
 					await faceMesh.send({ image: videoRef.current! });
@@ -104,7 +138,7 @@ export default function CameraCapture({ handleImageUpload }: Props) {
 			});
 			camera.start();
 		}
-	}, []);
+	}, [zoomStatus]);
 
 	return (
 		<div className='relative w-screen h-screen overflow-hidden bg-black'>
@@ -119,6 +153,8 @@ export default function CameraCapture({ handleImageUpload }: Props) {
 				hasFace={hasFace}
 				isCentered={isFaceInFrameCentered}
 				zoomStatus={zoomStatus}
+				dotPosition={dotPosition}
+				isPerfectAlignment={isPerfectAlignment}
 			/>
 			<LightingBar brightness={lightingLevel} />
 		</div>
