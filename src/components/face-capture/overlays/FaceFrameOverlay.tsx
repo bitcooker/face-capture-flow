@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useState } from 'react';
 import NoseAlignmentOverlay from './NoseAlignmentOverlay';
 
 interface Props {
@@ -18,154 +18,107 @@ export default function FaceFrameOverlay({
 	dotPosition,
 	isPerfectAlignment,
 }: Props) {
-	const canvasRef = useRef<HTMLCanvasElement | null>(null);
-	const rectAlpha = useRef(0);
-	const ovalAlpha = useRef(0);
-	const animationFrame = useRef<number | null>(null);
-	const fadeTimeout = useRef<NodeJS.Timeout | null>(null);
-	const targetState = useRef<'none' | 'rectangle' | 'oval'>('none');
+	const showOval = hasFace && isCentered;
+	const showRectangle = hasFace && !isCentered;
+
+	const [frameSize, setFrameSize] = useState({ width: 320, height: 420 });
 
 	useEffect(() => {
-		const canvas = canvasRef.current;
-		if (!canvas) return;
-		const ctx = canvas.getContext('2d');
-		if (!ctx) return;
+		const updateFrameSize = () => {
+			const vw = window.innerWidth;
+			const minWidth = 250;
+			const maxWidth = 420;
+			const minHeight = 320;
+			const maxHeight = 540;
 
-		const draw = () => {
-			const width = (canvas.width = window.innerWidth);
-			const height = (canvas.height = window.innerHeight);
-
-			ctx.clearRect(0, 0, width, height);
-
-			if (rectAlpha.current > 0.01) {
-				ctx.globalAlpha = rectAlpha.current;
-				const rw = width * 0.7;
-				const rh = width * 0.9;
-				const rx = (width - rw) / 2;
-				const ry = (height - rh) / 2;
-
-				ctx.strokeStyle = 'white';
-				ctx.lineWidth = 4;
-				ctx.beginPath();
-				ctx.roundRect(rx, ry, rw, rh, 24);
-				ctx.stroke();
-			}
-
-			if (ovalAlpha.current > 0.01) {
-				ctx.globalAlpha = ovalAlpha.current;
-
-				ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
-				ctx.fillRect(0, 0, width, height);
-
-				ctx.globalCompositeOperation = 'destination-out';
-				ctx.beginPath();
-				ctx.ellipse(
-					width / 2,
-					height / 2,
-					width * 0.4,
-					width * 0.55,
-					0,
-					0,
-					Math.PI * 2
-				);
-				ctx.fill();
-
-				ctx.globalCompositeOperation = 'source-over';
-				ctx.strokeStyle = isPerfectAlignment ? '#00FF00' : 'white';
-				ctx.lineWidth = 4;
-				ctx.beginPath();
-				ctx.ellipse(
-					width / 2,
-					height / 2,
-					width * 0.4,
-					width * 0.55,
-					0,
-					0,
-					Math.PI * 2
-				);
-				ctx.stroke();
-			}
-
-			ctx.globalAlpha = 1;
-			animationFrame.current = requestAnimationFrame(draw);
+			const width = Math.min(Math.max(minWidth, vw * 0.7), maxWidth);
+			const height = Math.min(Math.max(minHeight, vw * 0.9), maxHeight);
+			setFrameSize({ width, height });
 		};
 
-		const animateAlpha = () => {
-			const speedIn = 0.05;
-			const speedOut = 0.2;
-
-			const tick = () => {
-				const targetRect = targetState.current === 'rectangle' ? 1 : 0;
-				const targetOval = targetState.current === 'oval' ? 1 : 0;
-
-				rectAlpha.current +=
-					(targetRect - rectAlpha.current) *
-					(rectAlpha.current > targetRect ? speedOut : speedIn);
-				ovalAlpha.current +=
-					(targetOval - ovalAlpha.current) *
-					(ovalAlpha.current > targetOval ? speedOut : speedIn);
-
-				animationFrame.current = requestAnimationFrame(tick);
-			};
-
-			tick();
-		};
-
-		animateAlpha();
-		draw();
-
-		return () => cancelAnimationFrame(animationFrame.current!);
-	}, [isPerfectAlignment]);
-
-	useEffect(() => {
-		if (!hasFace) {
-			targetState.current = 'none';
-			if (fadeTimeout.current) clearTimeout(fadeTimeout.current);
-			rectAlpha.current = 0;
-			ovalAlpha.current = 0;
-		} else {
-			if (!isCentered) {
-				targetState.current = 'none';
-				ovalAlpha.current = 0;
-				rectAlpha.current = 0;
-				if (fadeTimeout.current) clearTimeout(fadeTimeout.current);
-				fadeTimeout.current = setTimeout(() => {
-					targetState.current = 'rectangle';
-				}, 100);
-			} else {
-				targetState.current = 'none';
-				rectAlpha.current = 0;
-				ovalAlpha.current = 0;
-				if (fadeTimeout.current) clearTimeout(fadeTimeout.current);
-				fadeTimeout.current = setTimeout(() => {
-					targetState.current = 'oval';
-				}, 100);
-			}
-		}
-	}, [hasFace, isCentered]);
+		updateFrameSize();
+		window.addEventListener('resize', updateFrameSize);
+		return () => window.removeEventListener('resize', updateFrameSize);
+	}, []);
 
 	const getText = () => {
 		if (!hasFace) return null;
 		if (!isCentered) return 'Umístěte obličej do rámu';
 		if (zoomStatus === 'too-far') return 'Posuňte se blíž';
 		if (zoomStatus === 'too-close') return 'Oddalte se';
+		if (!isPerfectAlignment)
+			return 'Upravte polohu obličeje, ať je tečka uprostřed.';
 		return 'Perfektní!';
 	};
 
 	return (
 		<>
-			<canvas
-				ref={canvasRef}
-				className='absolute inset-0 z-10 pointer-events-none'
-			/>
+			<div
+				className={`absolute inset-0 z-10 flex items-center justify-center pointer-events-none transition-opacity ${
+					showRectangle
+						? 'opacity-100 duration-500 delay-100'
+						: 'opacity-0 duration-200'
+				}`}
+			>
+				<div
+					className='border-4 border-white rounded-3xl'
+					style={{
+						width: `${frameSize.width}px`,
+						height: `${frameSize.height}px`,
+					}}
+				/>
+			</div>
+
+			<div
+				className={`absolute inset-0 z-10 pointer-events-none transition-opacity ${
+					showOval
+						? 'opacity-100 duration-500 delay-100'
+						: 'opacity-0 duration-200'
+				}`}
+			>
+				<svg width='100%' height='100%' className='absolute inset-0'>
+					<defs>
+						<mask id='oval-mask'>
+							<rect width='100%' height='100%' fill='white' />
+							<ellipse
+								cx={window.innerWidth / 2}
+								cy={window.innerHeight / 2}
+								rx={frameSize.width / 2}
+								ry={frameSize.height / 2}
+								fill='black'
+							/>
+						</mask>
+					</defs>
+
+					<rect
+						width='100%'
+						height='100%'
+						fill='black'
+						opacity='0.7'
+						mask='url(#oval-mask)'
+					/>
+
+					<ellipse
+						cx={window.innerWidth / 2}
+						cy={window.innerHeight / 2}
+						rx={frameSize.width / 2}
+						ry={frameSize.height / 2}
+						fill='none'
+						stroke={isPerfectAlignment ? '#00FF00' : 'white'}
+						strokeWidth='2.5'
+					/>
+				</svg>
+			</div>
+
 			{hasFace && isCentered && zoomStatus === 'perfect' && (
 				<NoseAlignmentOverlay
 					dotPosition={dotPosition}
 					isPerfectAlignment={isPerfectAlignment}
 				/>
 			)}
+
 			{hasFace && (
-				<div className='absolute bottom-24 w-full text-center px-4 z-20'>
+				<div className='absolute bottom-24 w-full text-center px-4 z-20 transition-opacity duration-300'>
 					<p className='text-white text-lg font-semibold'>
 						{getText()}
 					</p>

@@ -63,7 +63,6 @@ export default function CameraCapture() {
 
 			const landmarks = results.multiFaceLandmarks[0];
 
-			// Zoom check
 			const spanPx = calculateFaceSpanNormalized(landmarks, canvasHeight);
 			if (spanPx < 120) {
 				setZoomStatus('too-far');
@@ -73,7 +72,6 @@ export default function CameraCapture() {
 				setZoomStatus('perfect');
 			}
 
-			// Face visibility
 			const visible = isFaceVisible(landmarks, canvasWidth, canvasHeight);
 			if (!visible) {
 				setIsFaceInFrameCentered(false);
@@ -82,7 +80,6 @@ export default function CameraCapture() {
 				return;
 			}
 
-			// Centering check
 			const frame = {
 				x: canvasWidth * 0.12,
 				y: canvasHeight * 0.12,
@@ -97,27 +94,23 @@ export default function CameraCapture() {
 			);
 			setIsFaceInFrameCentered(centered);
 
-			// Brightness
 			const brightness = calculateBrightness(results.image);
 			setLightingLevel(brightness);
 
-			// Nose alignment
 			if (visible && centered && zoomStatus === 'perfect') {
 				const nose = landmarks[1];
 
-				// Screen-space dot for overlay
 				const bounds = videoEl.getBoundingClientRect();
 				const dotX = nose.x * bounds.width;
 				const dotY = nose.y * bounds.height;
 				setDotPosition({ x: dotX, y: dotY });
 
-				// Native-res alignment for accuracy
 				const targetX = canvasWidth / 2;
 				const targetY = canvasHeight / 2;
 				const actualX = nose.x * canvasWidth;
 				const actualY = nose.y * canvasHeight;
 
-				const radius = canvasWidth * 0.035; // tighter radius
+				const radius = canvasWidth * 0.03;
 				const dx = actualX - targetX;
 				const dy = actualY - targetY;
 				const distance = Math.sqrt(dx * dx + dy * dy);
