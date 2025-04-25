@@ -8,7 +8,6 @@ import '@tensorflow/tfjs-backend-webgl';
 import LightingBar from './overlays/LightingBar';
 import FaceFrameOverlay from './overlays/FaceFrameOverlay';
 import CaptureCountdown from './overlays/CaptureCountdown';
-import CapturePreview from './overlays/CapturePreview';
 import ScreenFlash from './overlays/ScreenFlash';
 
 import {
@@ -18,7 +17,11 @@ import {
 	isFaceVisible,
 } from './utils/faceUtils';
 
-export default function CameraCapture() {
+interface Props {
+	onCaptureComplete: (imageUrl: string) => void;
+}
+
+export default function CameraCapture({ onCaptureComplete }: Props) {
 	const videoRef = useRef<HTMLVideoElement | null>(null);
 
 	const [hasFace, setHasFace] = useState(false);
@@ -27,7 +30,6 @@ export default function CameraCapture() {
 	const [zoomStatus, setZoomStatus] = useState<
 		'too-close' | 'too-far' | 'perfect'
 	>('too-far');
-
 	const [dotPosition, setDotPosition] = useState<{
 		x: number;
 		y: number;
@@ -35,7 +37,6 @@ export default function CameraCapture() {
 	const [isPerfectAlignment, setIsPerfectAlignment] = useState(false);
 
 	const [countdown, setCountdown] = useState<number | null>(null);
-	const [capturedImage, setCapturedImage] = useState<string | null>(null);
 	const [showFlash, setShowFlash] = useState(false);
 
 	const countdownRef = useRef<NodeJS.Timeout | null>(null);
@@ -49,29 +50,16 @@ export default function CameraCapture() {
 		canvas.width = video.videoWidth;
 		canvas.height = video.videoHeight;
 		const ctx = canvas.getContext('2d');
+
 		if (ctx) {
 			ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 			const imageDataUrl = canvas.toDataURL('image/jpeg');
-			setCapturedImage(imageDataUrl);
 			setShowFlash(true);
-			setTimeout(() => setShowFlash(false), 300);
+			setTimeout(() => {
+				setShowFlash(false);
+				onCaptureComplete(imageDataUrl);
+			}, 300);
 		}
-	};
-
-	const resetState = () => {
-		setCapturedImage(null);
-		setCountdown(null);
-		setHasFace(false);
-		setIsFaceInFrameCentered(false);
-		setLightingLevel(0);
-		setZoomStatus('too-far');
-		setDotPosition(null);
-		setIsPerfectAlignment(false);
-		if (countdownRef.current) clearInterval(countdownRef.current);
-		if (debounceTimeoutRef.current)
-			clearTimeout(debounceTimeoutRef.current);
-		countdownRef.current = null;
-		debounceTimeoutRef.current = null;
 	};
 
 	useEffect(() => {
@@ -98,16 +86,12 @@ export default function CameraCapture() {
 			}, 500);
 		}
 
-		if (!isPerfectAlignment && countdown !== null) {
+		if (!isPerfectAlignment) {
 			setCountdown(null);
-			if (countdownRef.current) {
-				clearInterval(countdownRef.current);
-				countdownRef.current = null;
-			}
-		}
-
-		if (!isPerfectAlignment && debounceTimeoutRef.current) {
-			clearTimeout(debounceTimeoutRef.current);
+			if (countdownRef.current) clearInterval(countdownRef.current);
+			if (debounceTimeoutRef.current)
+				clearTimeout(debounceTimeoutRef.current);
+			countdownRef.current = null;
 			debounceTimeoutRef.current = null;
 		}
 
@@ -150,10 +134,13 @@ export default function CameraCapture() {
 
 			const landmarks = results.multiFaceLandmarks[0];
 			const spanPx = calculateFaceSpanNormalized(landmarks, canvasHeight);
-
-			if (spanPx < 120) setZoomStatus('too-far');
-			else if (spanPx > 170) setZoomStatus('too-close');
-			else setZoomStatus('perfect');
+			setZoomStatus(
+				spanPx < 120
+					? 'too-far'
+					: spanPx > 170
+					? 'too-close'
+					: 'perfect'
+			);
 
 			const visible = isFaceVisible(landmarks, canvasWidth, canvasHeight);
 			if (!visible) {
@@ -177,26 +164,19 @@ export default function CameraCapture() {
 			);
 			setIsFaceInFrameCentered(centered);
 
-			const brightness = calculateBrightness(results.image);
-			setLightingLevel(brightness);
+			setLightingLevel(calculateBrightness(results.image));
 
-			if (visible && centered && zoomStatus === 'perfect') {
+			if (centered && zoomStatus === 'perfect') {
 				const nose = landmarks[1];
 				const bounds = videoEl.getBoundingClientRect();
 				const dotX = nose.x * bounds.width;
 				const dotY = nose.y * bounds.height;
 				setDotPosition({ x: dotX, y: dotY });
 
-				const targetX = canvasWidth / 2;
-				const targetY = canvasHeight / 2;
-				const actualX = nose.x * canvasWidth;
-				const actualY = nose.y * canvasHeight;
-
-				const radius = canvasWidth * 0.03;
-				const dx = actualX - targetX;
-				const dy = actualY - targetY;
+				const dx = nose.x * canvasWidth - canvasWidth / 2;
+				const dy = nose.y * canvasHeight - canvasHeight / 2;
 				const distance = Math.sqrt(dx * dx + dy * dy);
-				setIsPerfectAlignment(distance < radius);
+				setIsPerfectAlignment(distance < canvasWidth * 0.03);
 			} else {
 				setDotPosition(null);
 				setIsPerfectAlignment(false);
@@ -218,38 +198,25 @@ export default function CameraCapture() {
 	return (
 		<div className='relative w-screen h-screen overflow-hidden bg-black'>
 			{showFlash && <ScreenFlash />}
-
-			{capturedImage ? (
-				<CapturePreview
-					imageUrl={capturedImage}
-					onRetake={resetState}
-					onConfirm={() => {
-						alert('Uploading...');
-					}}
-				/>
-			) : (
-				<>
-					<video
-						ref={videoRef}
-						autoPlay
-						playsInline
-						muted
-						className='absolute top-0 left-0 w-screen h-screen object-cover z-0'
-					/>
-					<FaceFrameOverlay
-						hasFace={hasFace}
-						isCentered={isFaceInFrameCentered}
-						zoomStatus={zoomStatus}
-						dotPosition={dotPosition}
-						isPerfectAlignment={isPerfectAlignment}
-					/>
-					<LightingBar brightness={lightingLevel} />
-					{countdown !== null && (
-						<div className='absolute top-[15%] w-full z-30 flex justify-center pointer-events-none'>
-							<CaptureCountdown count={countdown} />
-						</div>
-					)}
-				</>
+			<video
+				ref={videoRef}
+				autoPlay
+				playsInline
+				muted
+				className='absolute top-0 left-0 w-screen h-screen object-cover z-0'
+			/>
+			<FaceFrameOverlay
+				hasFace={hasFace}
+				isCentered={isFaceInFrameCentered}
+				zoomStatus={zoomStatus}
+				dotPosition={dotPosition}
+				isPerfectAlignment={isPerfectAlignment}
+			/>
+			<LightingBar brightness={lightingLevel} />
+			{countdown !== null && (
+				<div className='absolute top-[15%] w-full z-30 flex justify-center pointer-events-none'>
+					<CaptureCountdown count={countdown} />
+				</div>
 			)}
 		</div>
 	);

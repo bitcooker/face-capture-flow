@@ -3,18 +3,21 @@
 import { useEffect, useState } from 'react';
 import CameraPromptFlow from './flows/CameraPromptFlow';
 import CameraCapture from './CameraCapture';
+import ManualUploadFlow from './flows/ManualUploadFlow';
+import UploadingScreen from './screens/UploadingScreen';
 
-type PermissionState = 'loading' | 'granted' | 'prompt' | 'denied';
+type View = 'loading' | 'prompt' | 'camera' | 'manual' | 'uploading';
 
-export default function FaceCaptureFlow({
-	// eslint-disable-next-line @typescript-eslint/no-unused-vars
-	handleImageUpload,
-}: {
-	handleImageUpload: (dataUrl: string) => void;
-}) {
-	const [permissionState, setPermissionState] =
-		useState<PermissionState>('loading');
-	const [startCamera, setStartCamera] = useState(false);
+export default function FaceCaptureFlow() {
+	const [view, setView] = useState<View>('loading');
+	const [capturedImageUrl, setCapturedImageUrl] = useState<string | null>(
+		null
+	);
+
+	const handleImageCaptured = (imageDataUrl: string) => {
+		setCapturedImageUrl(imageDataUrl);
+		setView('uploading');
+	};
 
 	useEffect(() => {
 		async function checkPermission() {
@@ -22,14 +25,19 @@ export default function FaceCaptureFlow({
 				const result = await navigator.permissions.query({
 					name: 'camera' as PermissionName,
 				});
-				setPermissionState(result.state as PermissionState);
-				// eslint-disable-next-line @typescript-eslint/no-unused-vars
-			} catch (err) {
+				if (result.state === 'granted') {
+					setView('camera');
+				} else if (result.state === 'prompt') {
+					setView('prompt');
+				} else {
+					setView('manual');
+				}
+			} catch {
 				try {
 					await navigator.mediaDevices.getUserMedia({ video: true });
-					setPermissionState('granted');
+					setView('camera');
 				} catch {
-					setPermissionState('denied');
+					setView('manual');
 				}
 			}
 		}
@@ -37,25 +45,32 @@ export default function FaceCaptureFlow({
 		checkPermission();
 	}, []);
 
-	if (permissionState === 'loading') {
-		return <div className='text-center pt-32 text-gray-500'>Načítání…</div>;
-	}
+	switch (view) {
+		case 'loading':
+			return (
+				<div className='text-center pt-32 text-gray-500'>Načítání…</div>
+			);
 
-	if (permissionState === 'denied') {
-		return <>ManualUploadFlow</>;
-	}
+		case 'prompt':
+			return (
+				<CameraPromptFlow
+					onPermissionGranted={() => setView('camera')}
+					onPermissionDenied={() => setView('manual')}
+				/>
+			);
 
-	if (permissionState === 'prompt' && !startCamera) {
-		return (
-			<CameraPromptFlow
-				onPermissionGranted={() => {
-					setPermissionState('granted');
-					setStartCamera(true);
-				}}
-				onPermissionDenied={() => setPermissionState('denied')}
-			/>
-		);
-	}
+		case 'camera':
+			return <CameraCapture onCaptureComplete={handleImageCaptured} />;
 
-	return <CameraCapture />;
+		case 'manual':
+			return <ManualUploadFlow onUpload={handleImageCaptured} />;
+
+		case 'uploading':
+			return capturedImageUrl ? (
+				<UploadingScreen imageUrl={capturedImageUrl} />
+			) : null;
+
+		default:
+			return null;
+	}
 }
