@@ -7,6 +7,9 @@ import '@tensorflow/tfjs-backend-webgl';
 
 import LightingBar from './overlays/LightingBar';
 import FaceFrameOverlay from './overlays/FaceFrameOverlay';
+import CaptureCountdown from './overlays/CaptureCountdown';
+import CapturePreview from './overlays/CapturePreview';
+import ScreenFlash from './overlays/ScreenFlash';
 
 import {
 	calculateBrightness,
@@ -30,6 +33,90 @@ export default function CameraCapture() {
 		y: number;
 	} | null>(null);
 	const [isPerfectAlignment, setIsPerfectAlignment] = useState(false);
+
+	const [countdown, setCountdown] = useState<number | null>(null);
+	const [capturedImage, setCapturedImage] = useState<string | null>(null);
+	const [showFlash, setShowFlash] = useState(false);
+
+	const countdownRef = useRef<NodeJS.Timeout | null>(null);
+	const debounceTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+	const capturePhoto = () => {
+		const video = videoRef.current;
+		if (!video) return;
+
+		const canvas = document.createElement('canvas');
+		canvas.width = video.videoWidth;
+		canvas.height = video.videoHeight;
+		const ctx = canvas.getContext('2d');
+		if (ctx) {
+			ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+			const imageDataUrl = canvas.toDataURL('image/jpeg');
+			setCapturedImage(imageDataUrl);
+			setShowFlash(true);
+			setTimeout(() => setShowFlash(false), 300);
+		}
+	};
+
+	const resetState = () => {
+		setCapturedImage(null);
+		setCountdown(null);
+		setHasFace(false);
+		setIsFaceInFrameCentered(false);
+		setLightingLevel(0);
+		setZoomStatus('too-far');
+		setDotPosition(null);
+		setIsPerfectAlignment(false);
+		if (countdownRef.current) clearInterval(countdownRef.current);
+		if (debounceTimeoutRef.current)
+			clearTimeout(debounceTimeoutRef.current);
+		countdownRef.current = null;
+		debounceTimeoutRef.current = null;
+	};
+
+	useEffect(() => {
+		if (
+			isPerfectAlignment &&
+			countdown === null &&
+			!debounceTimeoutRef.current
+		) {
+			debounceTimeoutRef.current = setTimeout(() => {
+				setCountdown(3);
+				countdownRef.current = setInterval(() => {
+					setCountdown((prev) => {
+						if (prev === null) return null;
+						if (prev === 1) {
+							clearInterval(countdownRef.current!);
+							countdownRef.current = null;
+							setCountdown(null);
+							capturePhoto();
+							return null;
+						}
+						return prev - 1;
+					});
+				}, 1000);
+			}, 500);
+		}
+
+		if (!isPerfectAlignment && countdown !== null) {
+			setCountdown(null);
+			if (countdownRef.current) {
+				clearInterval(countdownRef.current);
+				countdownRef.current = null;
+			}
+		}
+
+		if (!isPerfectAlignment && debounceTimeoutRef.current) {
+			clearTimeout(debounceTimeoutRef.current);
+			debounceTimeoutRef.current = null;
+		}
+
+		return () => {
+			if (countdownRef.current) clearInterval(countdownRef.current);
+			if (debounceTimeoutRef.current)
+				clearTimeout(debounceTimeoutRef.current);
+		};
+	}, [isPerfectAlignment]);
 
 	useEffect(() => {
 		const faceMesh = new FaceMesh({
@@ -62,15 +149,11 @@ export default function CameraCapture() {
 			}
 
 			const landmarks = results.multiFaceLandmarks[0];
-
 			const spanPx = calculateFaceSpanNormalized(landmarks, canvasHeight);
-			if (spanPx < 120) {
-				setZoomStatus('too-far');
-			} else if (spanPx > 170) {
-				setZoomStatus('too-close');
-			} else {
-				setZoomStatus('perfect');
-			}
+
+			if (spanPx < 120) setZoomStatus('too-far');
+			else if (spanPx > 170) setZoomStatus('too-close');
+			else setZoomStatus('perfect');
 
 			const visible = isFaceVisible(landmarks, canvasWidth, canvasHeight);
 			if (!visible) {
@@ -99,7 +182,6 @@ export default function CameraCapture() {
 
 			if (visible && centered && zoomStatus === 'perfect') {
 				const nose = landmarks[1];
-
 				const bounds = videoEl.getBoundingClientRect();
 				const dotX = nose.x * bounds.width;
 				const dotY = nose.y * bounds.height;
@@ -135,21 +217,40 @@ export default function CameraCapture() {
 
 	return (
 		<div className='relative w-screen h-screen overflow-hidden bg-black'>
-			<video
-				ref={videoRef}
-				autoPlay
-				playsInline
-				muted
-				className='absolute top-0 left-0 w-screen h-screen object-cover z-0'
-			/>
-			<FaceFrameOverlay
-				hasFace={hasFace}
-				isCentered={isFaceInFrameCentered}
-				zoomStatus={zoomStatus}
-				dotPosition={dotPosition}
-				isPerfectAlignment={isPerfectAlignment}
-			/>
-			<LightingBar brightness={lightingLevel} />
+			{showFlash && <ScreenFlash />}
+
+			{capturedImage ? (
+				<CapturePreview
+					imageUrl={capturedImage}
+					onRetake={resetState}
+					onConfirm={() => {
+						alert('Uploading...');
+					}}
+				/>
+			) : (
+				<>
+					<video
+						ref={videoRef}
+						autoPlay
+						playsInline
+						muted
+						className='absolute top-0 left-0 w-screen h-screen object-cover z-0'
+					/>
+					<FaceFrameOverlay
+						hasFace={hasFace}
+						isCentered={isFaceInFrameCentered}
+						zoomStatus={zoomStatus}
+						dotPosition={dotPosition}
+						isPerfectAlignment={isPerfectAlignment}
+					/>
+					<LightingBar brightness={lightingLevel} />
+					{countdown !== null && (
+						<div className='absolute top-[15%] w-full z-30 flex justify-center pointer-events-none'>
+							<CaptureCountdown count={countdown} />
+						</div>
+					)}
+				</>
+			)}
 		</div>
 	);
 }
