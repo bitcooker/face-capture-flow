@@ -1,3 +1,5 @@
+'use client';
+
 import Image from 'next/image';
 
 interface Props {
@@ -7,37 +9,51 @@ interface Props {
 
 export default function CameraIntroScreen({ onContinue, loading }: Props) {
 	return (
-		<div className='flex flex-col items-center justify-center min-h-screen bg-white px-4 sm:px-6 pt-12 sm:pt-16 text-center'>
-			<h1 className='text-xl sm:text-2xl font-bold leading-tight mb-2'>
-				Podrobná diagnostika pleti zdarma
-			</h1>
-			<p className='text-gray-600 text-sm sm:text-base leading-relaxed mb-6 sm:mb-8'>
-				Povolte v následujícím kroku přístup k fotoaparátu.
-			</p>
+		<div className='min-h-screen flex flex-col bg-white px-5 text-center'>
+			<div className='flex flex-col flex-grow items-center justify-center'>
+				<div className='w-full max-w-xs sm:max-w-sm'>
+					<h1 className='text-[22px] sm:text-2xl font-semibold leading-snug mb-4'>
+						Podrobná AI diagnostika pleti{' '}
+						<span className='underline font-bold'>zdarma</span>
+					</h1>
 
-			<div className='mb-10 sm:mb-12 w-full max-w-xs sm:max-w-sm'>
-				<Image
-					src='/images/facecam-guide.png'
-					alt='Camera permission guide'
-					width={300}
-					height={200}
-					className='mx-auto'
-					priority
-				/>
+					<div className='rounded-2xl overflow-hidden shadow-sm mb-3'>
+						<Image
+							src='/images/facecam-guide.png'
+							alt='Permission Guide'
+							width={400}
+							height={220}
+							className='w-full h-auto object-contain'
+							priority
+						/>
+					</div>
+
+					<p className='text-sm sm:text-base text-gray-500'>
+						Povolte v následujícím kroku přístup k fotoaparátu.
+					</p>
+				</div>
 			</div>
 
-			<div className='w-full max-w-xs sm:max-w-sm'>
+			<div className='w-full max-w-xs sm:max-w-sm mx-auto mt-8 mb-6'>
 				<button
-					className={`w-full py-3 sm:py-3.5 text-white text-base sm:text-lg font-semibold rounded-lg transition-colors duration-200 ${
-						loading
-							? 'bg-gray-400'
-							: 'bg-blue-600 hover:bg-blue-700'
-					}`}
 					onClick={onContinue}
 					disabled={loading}
+					className={`w-full py-3 text-white text-base sm:text-lg font-semibold rounded-full transition-all duration-200 ${
+						loading
+							? 'opacity-50 cursor-not-allowed'
+							: 'hover:opacity-90'
+					}`}
+					style={{
+						background:
+							'linear-gradient(to right, #FFD600, #FF6B00)',
+					}}
 				>
 					Rozumím, pokračovat
 				</button>
+
+				<p className='text-sm text-gray-700 mt-3'>
+					Chci zjistit kvalitu mé pleti
+				</p>
 			</div>
 		</div>
 	);
