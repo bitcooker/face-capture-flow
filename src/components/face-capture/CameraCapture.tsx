@@ -49,8 +49,13 @@ export default function CameraCapture({ onCaptureComplete }: Props) {
 		const ctx = canvas.getContext('2d');
 
 		if (ctx) {
+			ctx.translate(canvas.width, 0);
+			ctx.scale(-1, 1);
+
 			ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
 			const imageDataUrl = canvas.toDataURL('image/jpeg');
+
 			setShowFlash(true);
 			setTimeout(() => {
 				setShowFlash(false);
@@ -98,54 +103,6 @@ export default function CameraCapture({ onCaptureComplete }: Props) {
 				clearTimeout(debounceTimeoutRef.current);
 		};
 	}, [isPerfectAlignment]);
-
-	// const drawLandmarks = (
-	// 	ctx: CanvasRenderingContext2D,
-	// 	// eslint-disable-next-line @typescript-eslint/no-explicit-any
-	// 	landmarks: any[],
-	// 	width: number,
-	// 	height: number,
-	// 	isPerfect: boolean,
-	// 	shouldDrawNoseDot: boolean
-	// ) => {
-	// 	// Draw small facial landmarks
-	// 	ctx.fillStyle = 'rgba(0,255,0,0.6)';
-	// 	landmarks.forEach((point) => {
-	// 		ctx.beginPath();
-	// 		ctx.arc(point.x * width, point.y * height, 1.5, 0, 2 * Math.PI);
-	// 		ctx.fill();
-	// 	});
-
-	// 	// Draw face outline
-	// 	ctx.strokeStyle = isPerfect ? 'lime' : 'white';
-	// 	ctx.lineWidth = 2;
-	// 	const outlineIndices = [
-	// 		10, 338, 297, 332, 284, 251, 389, 356, 454, 323, 361, 288, 397, 365,
-	// 		379, 378, 400, 377, 152, 148, 176, 149, 150, 136, 172, 58, 132, 93,
-	// 		234, 127, 162, 21, 54, 103, 67, 109,
-	// 	];
-
-	// 	ctx.beginPath();
-	// 	outlineIndices.forEach((index, i) => {
-	// 		const point = landmarks[index];
-	// 		const x = point.x * width;
-	// 		const y = point.y * height;
-	// 		if (i === 0) ctx.moveTo(x, y);
-	// 		else ctx.lineTo(x, y);
-	// 	});
-	// 	ctx.closePath();
-	// 	ctx.stroke();
-
-	// 	if (shouldDrawNoseDot) {
-	// 		const nose = landmarks[1];
-	// 		const noseX = nose.x * width;
-	// 		const noseY = nose.y * height;
-	// 		ctx.beginPath();
-	// 		ctx.arc(noseX, noseY, 6, 0, 2 * Math.PI);
-	// 		ctx.fillStyle = isPerfect ? 'lime' : 'white';
-	// 		ctx.fill();
-	// 	}
-	// };
 
 	const drawNoseDot = (
 		ctx: CanvasRenderingContext2D,
@@ -206,8 +163,13 @@ export default function CameraCapture({ onCaptureComplete }: Props) {
 			if (isDetected) {
 				const landmarks = results.multiFaceLandmarks[0];
 
+				const flippedLandmarks = landmarks.map((landmark) => ({
+					...landmark,
+					x: 1 - landmark.x,
+				}));
+
 				const spanPx = calculateFaceSpanNormalized(
-					landmarks,
+					flippedLandmarks,
 					canvasEl.height
 				);
 
@@ -219,7 +181,7 @@ export default function CameraCapture({ onCaptureComplete }: Props) {
 						: 'perfect';
 
 				faceVisible = isFaceVisible(
-					landmarks,
+					flippedLandmarks,
 					canvasEl.width,
 					canvasEl.height
 				);
@@ -232,14 +194,14 @@ export default function CameraCapture({ onCaptureComplete }: Props) {
 				};
 
 				faceCentered = isFaceInsideFrame(
-					landmarks,
+					flippedLandmarks,
 					canvasEl.width,
 					canvasEl.height,
 					frame
 				);
 
 				if (faceCentered && zoom === 'perfect') {
-					const nose = landmarks[1];
+					const nose = flippedLandmarks[1];
 					const dotX = nose.x * canvasEl.width;
 					const dotY = nose.y * canvasEl.height;
 
@@ -252,7 +214,7 @@ export default function CameraCapture({ onCaptureComplete }: Props) {
 
 				drawNoseDot(
 					ctx,
-					landmarks,
+					flippedLandmarks,
 					canvasEl.width,
 					canvasEl.height,
 					perfectAlignmentNow,
@@ -296,6 +258,7 @@ export default function CameraCapture({ onCaptureComplete }: Props) {
 				playsInline
 				muted
 				className='absolute top-0 left-0 w-full h-full object-cover z-0'
+				style={{ transform: 'scaleX(-1)' }}
 			/>
 			<canvas
 				ref={canvasRef}
