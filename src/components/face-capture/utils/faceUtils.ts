@@ -20,7 +20,7 @@ export function calculateBrightness(
 	}
 
 	const avg = total / (data.length / 4);
-	return Math.min(avg / 255, 1); // normalized to [0, 1]
+	return Math.min(avg / 255, 1);
 }
 
 export function isFaceInsideFrame(
@@ -41,10 +41,24 @@ export function isFaceInsideFrame(
 
 	const dx = centerX - frameCenterX;
 	const dy = centerY - frameCenterY;
-	const distance = Math.sqrt(dx * dx + dy * dy);
+	const centerDistance = Math.sqrt(dx * dx + dy * dy);
 
-	const tolerance = frame.width * 0.15; // stricter centering
-	return distance < tolerance;
+	const tolerance = frame.width * 0.18;
+
+	const minX = Math.min(...xs);
+	const maxX = Math.max(...xs);
+	const minY = Math.min(...ys);
+	const maxY = Math.max(...ys);
+
+	const relaxedMargin = frame.width * 0.4;
+
+	const relaxedBoundingBoxInside =
+		minX > frame.x - relaxedMargin &&
+		maxX < frame.x + frame.width + relaxedMargin &&
+		minY > frame.y - relaxedMargin &&
+		maxY < frame.y + frame.height + relaxedMargin;
+
+	return centerDistance < tolerance && relaxedBoundingBoxInside;
 }
 
 export function isFaceVisible(

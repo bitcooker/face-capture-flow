@@ -2,22 +2,22 @@
 
 import { useEffect, useState } from 'react';
 import CameraPromptFlow from './flows/CameraPromptFlow';
-import CameraCapture from './CameraCapture';
 import ManualUploadFlow from './flows/ManualUploadFlow';
+import CameraCapture from './CameraCapture';
 import UploadingScreen from './screens/UploadingScreen';
+import CapturePreview from './overlays/CapturePreview';
 
-type View = 'loading' | 'prompt' | 'camera' | 'manual' | 'uploading';
+type View =
+	| 'loading'
+	| 'prompt'
+	| 'camera'
+	| 'manual'
+	| 'preview'
+	| 'uploading';
 
 export default function FaceCaptureFlow() {
 	const [view, setView] = useState<View>('loading');
-	const [capturedImageUrl, setCapturedImageUrl] = useState<string | null>(
-		null
-	);
-
-	const handleImageCaptured = (imageDataUrl: string) => {
-		setCapturedImageUrl(imageDataUrl);
-		setView('uploading');
-	};
+	const [imageUrl, setImageUrl] = useState<string | null>(null);
 
 	useEffect(() => {
 		async function checkPermission() {
@@ -45,6 +45,21 @@ export default function FaceCaptureFlow() {
 		checkPermission();
 	}, []);
 
+	const handleCaptureComplete = (dataUrl: string) => {
+		setImageUrl(dataUrl);
+		setView('preview');
+	};
+
+	const handleRetake = () => {
+		setImageUrl(null);
+		setView('camera');
+	};
+
+	const handleConfirm = () => {
+		if (!imageUrl) return;
+		setView('uploading');
+	};
+
 	switch (view) {
 		case 'loading':
 			return (
@@ -60,15 +75,22 @@ export default function FaceCaptureFlow() {
 			);
 
 		case 'camera':
-			return <CameraCapture onCaptureComplete={handleImageCaptured} />;
+			return <CameraCapture onCaptureComplete={handleCaptureComplete} />;
 
 		case 'manual':
-			return <ManualUploadFlow onUpload={handleImageCaptured} />;
+			return <ManualUploadFlow onUpload={handleCaptureComplete} />;
+
+		case 'preview':
+			return (
+				<CapturePreview
+					imageUrl={imageUrl!}
+					onRetake={handleRetake}
+					onConfirm={handleConfirm}
+				/>
+			);
 
 		case 'uploading':
-			return capturedImageUrl ? (
-				<UploadingScreen imageUrl={capturedImageUrl} />
-			) : null;
+			return <UploadingScreen imageUrl={imageUrl!} />;
 
 		default:
 			return null;

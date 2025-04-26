@@ -1,13 +1,13 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
+import { debounce } from 'lodash';
 import NoseAlignmentOverlay from './NoseAlignmentOverlay';
 
 interface Props {
 	hasFace: boolean;
 	isCentered: boolean;
 	zoomStatus: 'too-close' | 'too-far' | 'perfect';
-	dotPosition: { x: number; y: number } | null;
 	isPerfectAlignment: boolean;
 }
 
@@ -15,13 +15,42 @@ export default function FaceFrameOverlay({
 	hasFace,
 	isCentered,
 	zoomStatus,
-	dotPosition,
 	isPerfectAlignment,
 }: Props) {
-	const showOval = hasFace && isCentered;
-	const showRectangle = hasFace && !isCentered;
-
 	const [frameSize, setFrameSize] = useState({ width: 320, height: 420 });
+
+	const [debouncedShowRectangle, setDebouncedShowRectangle] = useState(
+		hasFace && !isCentered
+	);
+	const [debouncedShowOval, setDebouncedShowOval] = useState(
+		hasFace && isCentered
+	);
+
+	const [textState, setTextState] = useState<string | null>('');
+
+	const debouncedSetRectangle = useMemo(
+		() =>
+			debounce((show: boolean) => {
+				setDebouncedShowRectangle(show);
+			}, 200),
+		[]
+	);
+
+	const debouncedSetOval = useMemo(
+		() =>
+			debounce((show: boolean) => {
+				setDebouncedShowOval(show);
+			}, 200),
+		[]
+	);
+
+	const debouncedSetText = useMemo(
+		() =>
+			debounce((newText: string) => {
+				setTextState(newText);
+			}, 180),
+		[]
+	);
 
 	useEffect(() => {
 		const updateFrameSize = () => {
@@ -38,24 +67,52 @@ export default function FaceFrameOverlay({
 
 		updateFrameSize();
 		window.addEventListener('resize', updateFrameSize);
-		return () => window.removeEventListener('resize', updateFrameSize);
-	}, []);
 
-	const getText = () => {
-		if (!hasFace) return null;
-		if (!isCentered) return 'Umístěte obličej do rámu';
-		if (zoomStatus === 'too-far') return 'Posuňte se blíž';
-		if (zoomStatus === 'too-close') return 'Oddalte se';
-		if (!isPerfectAlignment)
-			return 'Upravte polohu obličeje, ať je tečka uprostřed.';
-		return 'Perfektní!';
-	};
+		return () => {
+			debouncedSetRectangle.cancel();
+			debouncedSetOval.cancel();
+			debouncedSetText.cancel();
+			window.removeEventListener('resize', updateFrameSize);
+		};
+	}, [debouncedSetRectangle, debouncedSetOval, debouncedSetText]);
+
+	useEffect(() => {
+		debouncedSetRectangle(hasFace && !isCentered);
+		debouncedSetOval(hasFace && isCentered);
+
+		const getText = () => {
+			if (!hasFace) return '';
+			if (!isCentered) return 'Umístěte obličej do rámu';
+			if (zoomStatus === 'too-far') return 'Posuňte se blíž';
+			if (zoomStatus === 'too-close') return 'Oddalte se';
+			if (!isPerfectAlignment)
+				return 'Upravte polohu obličeje, ať je tečka uprostřed.';
+			return 'Perfektní!';
+		};
+
+		const newText = getText();
+		debouncedSetText(newText);
+
+		return () => {
+			debouncedSetRectangle.cancel();
+			debouncedSetOval.cancel();
+			debouncedSetText.cancel();
+		};
+	}, [
+		hasFace,
+		isCentered,
+		zoomStatus,
+		isPerfectAlignment,
+		debouncedSetRectangle,
+		debouncedSetOval,
+		debouncedSetText,
+	]);
 
 	return (
 		<>
 			<div
 				className={`absolute inset-0 z-10 flex items-center justify-center pointer-events-none transition-opacity ${
-					showRectangle
+					debouncedShowRectangle
 						? 'opacity-100 duration-500 delay-100'
 						: 'opacity-0 duration-200'
 				}`}
@@ -71,7 +128,7 @@ export default function FaceFrameOverlay({
 
 			<div
 				className={`absolute inset-0 z-10 pointer-events-none transition-opacity ${
-					showOval
+					debouncedShowOval
 						? 'opacity-100 duration-500 delay-100'
 						: 'opacity-0 duration-200'
 				}`}
@@ -94,7 +151,7 @@ export default function FaceFrameOverlay({
 						width='100%'
 						height='100%'
 						fill='black'
-						opacity='0.7'
+						opacity='0.4'
 						mask='url(#oval-mask)'
 					/>
 
@@ -106,24 +163,20 @@ export default function FaceFrameOverlay({
 						fill='none'
 						stroke={isPerfectAlignment ? '#00FF00' : 'white'}
 						strokeWidth='2.5'
+						style={{
+							transition: 'stroke 0.3s ease',
+						}}
 					/>
 				</svg>
 			</div>
 
 			{hasFace && isCentered && zoomStatus === 'perfect' && (
-				<NoseAlignmentOverlay
-					dotPosition={dotPosition}
-					isPerfectAlignment={isPerfectAlignment}
-				/>
+				<NoseAlignmentOverlay isPerfectAlignment={isPerfectAlignment} />
 			)}
 
-			{hasFace && (
-				<div className='absolute bottom-24 w-full text-center px-4 z-20 transition-opacity duration-300'>
-					<p className='text-white text-lg font-semibold'>
-						{getText()}
-					</p>
-				</div>
-			)}
+			<div className='absolute bottom-24 w-full text-center px-4 z-20 transition-opacity duration-300'>
+				<p className='text-white text-lg font-semibold'>{textState}</p>
+			</div>
 		</>
 	);
 }
