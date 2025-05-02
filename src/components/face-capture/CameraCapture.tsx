@@ -50,12 +50,41 @@ export default function CameraCapture({ onCaptureComplete }: Props) {
 		if (frameRequestRef.current) cancelAnimationFrame(frameRequestRef.current);
 		if (cameraRef.current) cameraRef.current.stop();
 		if (faceMeshRef.current) faceMeshRef.current.close();
+		
+		if (videoRef.current?.srcObject) {
+			const tracks = (videoRef.current.srcObject as MediaStream).getTracks();
+			tracks.forEach(track => track.stop());
+			videoRef.current.srcObject = null;
+		}
 	}, []);
 
 	useEffect(() => {
 		const initializeCamera = async () => {
 			try {
 				cleanup();
+
+				const screenWidth = window.screen.width;
+				const screenHeight = window.screen.height;
+				const pixelRatio = window.devicePixelRatio || 1;
+
+				const maxWidth = Math.min(screenWidth * pixelRatio, 1920);
+				const maxHeight = Math.min(screenHeight * pixelRatio, 1080);
+				const aspectRatio = maxWidth / maxHeight;
+
+				const constraints: MediaStreamConstraints = {
+					video: {
+						width: { ideal: maxWidth },
+						height: { ideal: maxHeight },
+						aspectRatio: { ideal: aspectRatio },
+						facingMode: 'user',
+						frameRate: { ideal: 30 },
+						advanced: [
+							{ width: { min: 1280 } },
+							{ height: { min: 720 } },
+							{ frameRate: { min: 24 } }
+						]
+					}
+				};
 
 				const faceMesh = new FaceMesh({
 					locateFile: (file) =>
@@ -72,14 +101,18 @@ export default function CameraCapture({ onCaptureComplete }: Props) {
 				faceMeshRef.current = faceMesh;
 
 				if (videoRef.current) {
+					const stream = await navigator.mediaDevices.getUserMedia(constraints);
+					videoRef.current.srcObject = stream;
+					videoRef.current.play();
+
 					const camera = new Camera(videoRef.current, {
 						onFrame: async () => {
 							if (videoRef.current) {
 								await faceMesh.send({ image: videoRef.current });
 							}
 						},
-						width: window.innerWidth,
-						height: window.innerHeight,
+						width: maxWidth,
+						height: maxHeight,
 					});
 
 					cameraRef.current = camera;
@@ -103,18 +136,32 @@ export default function CameraCapture({ onCaptureComplete }: Props) {
 		if (!video) return;
 
 		const canvas = document.createElement('canvas');
-		canvas.width = video.videoWidth;
-		canvas.height = video.videoHeight;
-		const ctx = canvas.getContext('2d');
+		const pixelRatio = window.devicePixelRatio || 1;
+		
+		canvas.width = video.videoWidth * pixelRatio;
+		canvas.height = video.videoHeight * pixelRatio;
+		
+		const ctx = canvas.getContext('2d', {
+			alpha: false,
+			willReadFrequently: false
+		});
 
 		if (ctx) {
-			ctx.translate(canvas.width, 0);
+			ctx.imageSmoothingEnabled = true;
+			ctx.imageSmoothingQuality = 'high';
+			
+			ctx.scale(pixelRatio, pixelRatio);
+			
+			ctx.translate(video.videoWidth, 0);
 			ctx.scale(-1, 1);
-
-			ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-
-			const imageDataUrl = canvas.toDataURL('image/jpeg');
-
+			
+			ctx.drawImage(video, 0, 0, video.videoWidth, video.videoHeight);
+			
+			const imageDataUrl = canvas.toDataURL('image/jpeg', 1.0);
+			
+			canvas.width = 0;
+			canvas.height = 0;
+			
 			setShowFlash(true);
 			setTimeout(() => {
 				setShowFlash(false);
@@ -294,7 +341,14 @@ export default function CameraCapture({ onCaptureComplete }: Props) {
 				style={{ 
 					transform: 'scaleX(-1)',
 					transition: 'opacity 0.3s ease-in-out',
-					opacity: isCameraReady ? 1 : 0
+					opacity: isCameraReady ? 1 : 0,
+					objectFit: 'cover',
+					width: '100%',
+					height: '100%',
+					position: 'absolute',
+					top: 0,
+					left: 0,
+					backgroundColor: 'black'
 				}}
 			/>
 			<canvas
@@ -302,7 +356,13 @@ export default function CameraCapture({ onCaptureComplete }: Props) {
 				className='absolute top-0 left-0 w-full h-full z-10 pointer-events-none'
 				style={{
 					transition: 'opacity 0.3s ease-in-out',
-					opacity: isCameraReady ? 1 : 0
+					opacity: isCameraReady ? 1 : 0,
+					position: 'absolute',
+					top: 0,
+					left: 0,
+					width: '100%',
+					height: '100%',
+					pointerEvents: 'none'
 				}}
 			/>
 			{!isCameraReady && (
