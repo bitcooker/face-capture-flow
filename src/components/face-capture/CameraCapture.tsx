@@ -1,6 +1,7 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
+import React from 'react';
 import { FaceMesh } from '@mediapipe/face_mesh';
 import { Camera } from '@mediapipe/camera_utils';
 import '@tensorflow/tfjs-backend-webgl';
@@ -24,6 +25,8 @@ interface Props {
 export default function CameraCapture({ onCaptureComplete }: Props) {
 	const videoRef = useRef<HTMLVideoElement | null>(null);
 	const canvasRef = useRef<HTMLCanvasElement | null>(null);
+	const faceMeshRef = useRef<FaceMesh | null>(null);
+	const cameraRef = useRef<Camera | null>(null);
 
 	const [hasFace, setHasFace] = useState(false);
 	const [isFaceInFrameCentered, setIsFaceInFrameCentered] = useState(false);
@@ -32,12 +35,68 @@ export default function CameraCapture({ onCaptureComplete }: Props) {
 		'too-close' | 'too-far' | 'perfect'
 	>('too-far');
 	const [isPerfectAlignment, setIsPerfectAlignment] = useState(false);
+	const [isCameraReady, setIsCameraReady] = useState(false);
 
 	const [countdown, setCountdown] = useState<number | null>(null);
 	const [showFlash, setShowFlash] = useState(false);
 
 	const countdownRef = useRef<NodeJS.Timeout | null>(null);
 	const debounceTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+	const frameRequestRef = useRef<number | null>(null);
+
+	const cleanup = useCallback(() => {
+		if (countdownRef.current) clearInterval(countdownRef.current);
+		if (debounceTimeoutRef.current) clearTimeout(debounceTimeoutRef.current);
+		if (frameRequestRef.current) cancelAnimationFrame(frameRequestRef.current);
+		if (cameraRef.current) cameraRef.current.stop();
+		if (faceMeshRef.current) faceMeshRef.current.close();
+	}, []);
+
+	useEffect(() => {
+		const initializeCamera = async () => {
+			try {
+				cleanup();
+
+				const faceMesh = new FaceMesh({
+					locateFile: (file) =>
+						`https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}`,
+				});
+
+				faceMesh.setOptions({
+					maxNumFaces: 1,
+					refineLandmarks: true,
+					minDetectionConfidence: 0.5,
+					minTrackingConfidence: 0.5,
+				});
+
+				faceMeshRef.current = faceMesh;
+
+				if (videoRef.current) {
+					const camera = new Camera(videoRef.current, {
+						onFrame: async () => {
+							if (videoRef.current) {
+								await faceMesh.send({ image: videoRef.current });
+							}
+						},
+						width: window.innerWidth,
+						height: window.innerHeight,
+					});
+
+					cameraRef.current = camera;
+					await camera.start();
+					setIsCameraReady(true);
+				}
+			} catch (error) {
+				console.error('Camera initialization failed:', error);
+			}
+		};
+
+		initializeCamera();
+
+		return () => {
+			cleanup();
+		};
+	}, [cleanup]);
 
 	const capturePhoto = () => {
 		const video = videoRef.current;
@@ -65,44 +124,49 @@ export default function CameraCapture({ onCaptureComplete }: Props) {
 	};
 
 	useEffect(() => {
-		if (
-			isPerfectAlignment &&
-			countdown === null &&
-			!debounceTimeoutRef.current
-		) {
+		if (!isCameraReady) return;
+
+		const startCountdown = () => {
+			if (countdownRef.current) clearInterval(countdownRef.current);
+			if (debounceTimeoutRef.current) clearTimeout(debounceTimeoutRef.current);
+
+			setCountdown(3);
+			countdownRef.current = setInterval(() => {
+				setCountdown((prev) => {
+					if (prev === null) return null;
+					if (prev === 1) {
+						clearInterval(countdownRef.current!);
+						countdownRef.current = null;
+						setCountdown(null);
+						capturePhoto();
+						return null;
+					}
+					return prev - 1;
+				});
+			}, 1000);
+		};
+
+		if (isPerfectAlignment && countdown === null) {
 			debounceTimeoutRef.current = setTimeout(() => {
-				setCountdown(3);
-				countdownRef.current = setInterval(() => {
-					setCountdown((prev) => {
-						if (prev === null) return null;
-						if (prev === 1) {
-							clearInterval(countdownRef.current!);
-							countdownRef.current = null;
-							setCountdown(null);
-							capturePhoto();
-							return null;
-						}
-						return prev - 1;
-					});
-				}, 1000);
-			}, 500);
+				if (isPerfectAlignment) {
+					startCountdown();
+				}
+			}, 1000);
 		}
 
-		if (!isPerfectAlignment) {
+		if (!isPerfectAlignment && countdown !== null) {
 			setCountdown(null);
 			if (countdownRef.current) clearInterval(countdownRef.current);
-			if (debounceTimeoutRef.current)
-				clearTimeout(debounceTimeoutRef.current);
+			if (debounceTimeoutRef.current) clearTimeout(debounceTimeoutRef.current);
 			countdownRef.current = null;
 			debounceTimeoutRef.current = null;
 		}
 
 		return () => {
 			if (countdownRef.current) clearInterval(countdownRef.current);
-			if (debounceTimeoutRef.current)
-				clearTimeout(debounceTimeoutRef.current);
+			if (debounceTimeoutRef.current) clearTimeout(debounceTimeoutRef.current);
 		};
-	}, [isPerfectAlignment]);
+	}, [isPerfectAlignment, isCameraReady]);
 
 	const drawNoseDot = (
 		ctx: CanvasRenderingContext2D,
@@ -128,17 +192,8 @@ export default function CameraCapture({ onCaptureComplete }: Props) {
 	};
 
 	useEffect(() => {
-		const faceMesh = new FaceMesh({
-			locateFile: (file) =>
-				`https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}`,
-		});
-
-		faceMesh.setOptions({
-			maxNumFaces: 1,
-			refineLandmarks: true,
-			minDetectionConfidence: 0.5,
-			minTrackingConfidence: 0.5,
-		});
+		const faceMesh = faceMeshRef.current;
+		if (!faceMesh || !isCameraReady) return;
 
 		faceMesh.onResults((results) => {
 			const videoEl = videoRef.current;
@@ -148,106 +203,84 @@ export default function CameraCapture({ onCaptureComplete }: Props) {
 			const ctx = canvasEl.getContext('2d');
 			if (!ctx) return;
 
-			canvasEl.width = videoEl.videoWidth;
-			canvasEl.height = videoEl.videoHeight;
+			frameRequestRef.current = requestAnimationFrame(() => {
+				canvasEl.width = videoEl.videoWidth;
+				canvasEl.height = videoEl.videoHeight;
 
-			ctx.clearRect(0, 0, canvasEl.width, canvasEl.height);
+				ctx.clearRect(0, 0, canvasEl.width, canvasEl.height);
 
-			const isDetected = results.multiFaceLandmarks?.length > 0;
+				const isDetected = results.multiFaceLandmarks?.length > 0;
+				let faceVisible = false;
+				let faceCentered = false;
+				let zoom = 'too-far' as 'too-close' | 'too-far' | 'perfect';
+				let perfectAlignmentNow = false;
 
-			let faceVisible = false;
-			let faceCentered = false;
-			let zoom = 'too-far' as 'too-close' | 'too-far' | 'perfect';
-			let perfectAlignmentNow = false;
+				if (isDetected) {
+					const landmarks = results.multiFaceLandmarks[0];
+					const flippedLandmarks = landmarks.map((landmark) => ({
+						...landmark,
+						x: 1 - landmark.x,
+					}));
 
-			if (isDetected) {
-				const landmarks = results.multiFaceLandmarks[0];
+					const spanPx = calculateFaceSpanNormalized(flippedLandmarks, canvasEl.height);
+					const currentZoom = zoomStatus;
 
-				const flippedLandmarks = landmarks.map((landmark) => ({
-					...landmark,
-					x: 1 - landmark.x,
-				}));
+					if (spanPx < 180) {
+						zoom = 'too-far';
+					} else if (spanPx > 210) {
+						zoom = 'too-close';
+					} else {
+						zoom = currentZoom === 'perfect' && (spanPx < 180 || spanPx > 210) 
+							? currentZoom 
+							: 'perfect';
+					}
 
-				const spanPx = calculateFaceSpanNormalized(
-					flippedLandmarks,
-					canvasEl.height
-				);
+					faceVisible = isFaceVisible(flippedLandmarks, canvasEl.width, canvasEl.height);
+					
+					const frame = {
+						x: canvasEl.width * 0.12,
+						y: canvasEl.height * 0.12,
+						width: canvasEl.width * 0.7,
+						height: canvasEl.height * 0.7,
+					};
 
-				zoom =
-					spanPx < 180
-						? 'too-far'
-						: spanPx > 210
-						? 'too-close'
-						: 'perfect';
+					faceCentered = isFaceInsideFrame(flippedLandmarks, canvasEl.width, canvasEl.height, frame);
 
-				faceVisible = isFaceVisible(
-					flippedLandmarks,
-					canvasEl.width,
-					canvasEl.height
-				);
+					if (faceCentered && zoom === 'perfect') {
+						const nose = flippedLandmarks[1];
+						const dotX = nose.x * canvasEl.width;
+						const dotY = nose.y * canvasEl.height;
 
-				const frame = {
-					x: canvasEl.width * 0.12,
-					y: canvasEl.height * 0.12,
-					width: canvasEl.width * 0.7,
-					height: canvasEl.height * 0.7,
-				};
+						const dx = dotX - canvasEl.width / 2;
+						const dy = dotY - canvasEl.height / 2;
+						const distance = Math.sqrt(dx * dx + dy * dy);
 
-				faceCentered = isFaceInsideFrame(
-					flippedLandmarks,
-					canvasEl.width,
-					canvasEl.height,
-					frame
-				);
+						perfectAlignmentNow = distance < canvasEl.width * 0.03;
+					}
 
-				if (faceCentered && zoom === 'perfect') {
-					const nose = flippedLandmarks[1];
-					const dotX = nose.x * canvasEl.width;
-					const dotY = nose.y * canvasEl.height;
-
-					const dx = dotX - canvasEl.width / 2;
-					const dy = dotY - canvasEl.height / 2;
-					const distance = Math.sqrt(dx * dx + dy * dy);
-
-					perfectAlignmentNow = distance < canvasEl.width * 0.03;
+					drawNoseDot(
+						ctx,
+						flippedLandmarks,
+						canvasEl.width,
+						canvasEl.height,
+						perfectAlignmentNow,
+						faceVisible && faceCentered && zoom === 'perfect'
+					);
 				}
 
-				drawNoseDot(
-					ctx,
-					flippedLandmarks,
-					canvasEl.width,
-					canvasEl.height,
-					perfectAlignmentNow,
-					faceVisible && faceCentered && zoom === 'perfect'
-				);
-			}
+				setHasFace(isDetected);
+				setIsFaceInFrameCentered(faceCentered);
+				setZoomStatus(zoom);
+				setIsPerfectAlignment(perfectAlignmentNow);
 
-			setHasFace(isDetected);
-			setIsFaceInFrameCentered(faceCentered);
-			setZoomStatus(zoom);
-			setIsPerfectAlignment(perfectAlignmentNow);
-
-			if (!isDetected || !faceVisible) {
-				setLightingLevel(0);
-			} else {
-				setLightingLevel(calculateBrightness(results.image));
-			}
-		});
-
-		if (typeof window !== 'undefined' && videoRef.current) {
-			const screenWidth = window.innerWidth;
-			const screenHeight = window.innerHeight;
-
-			const camera = new Camera(videoRef.current, {
-				onFrame: async () => {
-					await faceMesh.send({ image: videoRef.current! });
-				},
-				width: screenWidth,
-				height: screenHeight,
+				if (!isDetected || !faceVisible) {
+					setLightingLevel(0);
+				} else {
+					setLightingLevel(calculateBrightness(results.image));
+				}
 			});
-			camera.start();
-		}
-	}, [zoomStatus]);
+		});
+	}, [zoomStatus, isCameraReady]);
 
 	return (
 		<div className='relative w-screen h-screen overflow-hidden bg-black'>
@@ -257,13 +290,26 @@ export default function CameraCapture({ onCaptureComplete }: Props) {
 				autoPlay
 				playsInline
 				muted
-				className='absolute top-0 left-0 w-full h-full object-cover z-0'
-				style={{ transform: 'scaleX(-1)' }}
+				className='absolute top-0 left-0 w-full h-full z-0'
+				style={{ 
+					transform: 'scaleX(-1)',
+					transition: 'opacity 0.3s ease-in-out',
+					opacity: isCameraReady ? 1 : 0
+				}}
 			/>
 			<canvas
 				ref={canvasRef}
 				className='absolute top-0 left-0 w-full h-full z-10 pointer-events-none'
+				style={{
+					transition: 'opacity 0.3s ease-in-out',
+					opacity: isCameraReady ? 1 : 0
+				}}
 			/>
+			{!isCameraReady && (
+				<div className='absolute inset-0 flex items-center justify-center z-20'>
+					<div className='text-white text-lg'>Initializing camera...</div>
+				</div>
+			)}
 			<FaceFrameOverlay
 				hasFace={hasFace}
 				isCentered={isFaceInFrameCentered}
@@ -278,4 +324,43 @@ export default function CameraCapture({ onCaptureComplete }: Props) {
 			)}
 		</div>
 	);
+}
+
+export class CameraErrorBoundary extends React.Component<
+	{ children: React.ReactNode },
+	{ hasError: boolean }
+> {
+	constructor(props: { children: React.ReactNode }) {
+		super(props);
+		this.state = { hasError: false };
+	}
+
+	static getDerivedStateFromError() {
+		return { hasError: true };
+	}
+
+	componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
+		console.error('Camera error:', error, errorInfo);
+	}
+
+	render() {
+		if (this.state.hasError) {
+			return (
+				<div className='flex items-center justify-center h-screen bg-black text-white'>
+					<div className='text-center'>
+						<h2 className='text-2xl mb-4'>Camera Error</h2>
+						<p className='mb-4'>There was a problem with the camera. Please try refreshing the page.</p>
+						<button
+							onClick={() => window.location.reload()}
+							className='px-4 py-2 bg-white text-black rounded hover:bg-gray-200'
+						>
+							Refresh Page
+						</button>
+					</div>
+				</div>
+			);
+		}
+
+		return this.props.children;
+	}
 }
