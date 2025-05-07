@@ -43,14 +43,14 @@ export function isFaceInsideFrame(
 	const dy = centerY - frameCenterY;
 	const centerDistance = Math.sqrt(dx * dx + dy * dy);
 
-	const tolerance = frame.width * 0.18;
+	const tolerance = frame.width * 0.25;
 
 	const minX = Math.min(...xs);
 	const maxX = Math.max(...xs);
 	const minY = Math.min(...ys);
 	const maxY = Math.max(...ys);
 
-	const relaxedMargin = frame.width * 0.4;
+	const relaxedMargin = frame.width * 0.5;
 
 	const relaxedBoundingBoxInside =
 		minX > frame.x - relaxedMargin &&
@@ -78,10 +78,10 @@ export function isFaceVisible(
 	const boxWidth = maxX - minX;
 	const boxHeight = maxY - minY;
 
-	const minWidth = videoWidth * 0.15;
-	const minHeight = videoHeight * 0.15;
+	const minWidth = videoWidth * 0.12;
+	const minHeight = videoHeight * 0.12;
 
-	const margin = 0.05;
+	const margin = 0.08;
 	const isInsideScreen =
 		minX >= -videoWidth * margin &&
 		maxX <= videoWidth * (1 + margin) &&
