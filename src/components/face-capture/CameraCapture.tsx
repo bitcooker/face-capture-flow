@@ -271,7 +271,7 @@ export default function CameraCapture({ onCaptureComplete }: Props) {
 
 					const spanPx = calculateFaceSpanNormalized(flippedLandmarks, canvasEl.height);
 					const currentZoom = zoomStatus;
-
+          
 					if (spanPx < 120) {
 						zoom = 'too-far';
 					} else if (spanPx > 300) {
