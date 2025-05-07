@@ -233,7 +233,7 @@ export default function CameraCapture({ onCaptureComplete }: Props) {
 		const noseY = nose.y * height;
 
 		ctx.beginPath();
-		ctx.arc(noseX, noseY, 6, 0, 2 * Math.PI);
+		ctx.arc(noseX, noseY, 10, 0, 2 * Math.PI);
 		ctx.fillStyle = 'white';
 		ctx.fill();
 	};
@@ -302,7 +302,7 @@ export default function CameraCapture({ onCaptureComplete }: Props) {
 						const dy = dotY - canvasEl.height / 2;
 						const distance = Math.sqrt(dx * dx + dy * dy);
 
-						perfectAlignmentNow = distance < canvasEl.width * 0.03;
+						perfectAlignmentNow = distance < canvasEl.width * 0.05;
 					}
 
 					drawNoseDot(
