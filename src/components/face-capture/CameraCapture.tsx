@@ -272,12 +272,12 @@ export default function CameraCapture({ onCaptureComplete }: Props) {
 					const spanPx = calculateFaceSpanNormalized(flippedLandmarks, canvasEl.height);
 					const currentZoom = zoomStatus;
 
-					if (spanPx < 350) {
+					if (spanPx < 370) {
 						zoom = 'too-far';
-					} else if (spanPx > 400) {
+					} else if (spanPx > 420) {
 						zoom = 'too-close';
 					} else {
-						zoom = currentZoom === 'perfect' && (spanPx < 350 || spanPx > 400) 
+						zoom = currentZoom === 'perfect' && (spanPx < 370 || spanPx > 420) 
 							? currentZoom 
 							: 'perfect';
 					}
